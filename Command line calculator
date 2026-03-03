@@ -1,0 +1,132 @@
+#include<stdio.h>
+#include<stdbool.h>
+#include<string.h>
+#include<math.h>
+
+double add(double a, double b){
+    return a+b;}
+double minus(double a, double b){
+    return a-b;}
+double multiply(double a, double b){
+    return a*b;}
+double divide(double a, double b){
+    return a/b;}
+double squareroot(double a){   
+        return sqrt(a);}   
+double exponent(double a, double b){   
+    return pow(a,b);}
+double pi(double a){
+    return a*3.141592;}
+double logarithmim(double a){
+    if(a<=0){
+        return 1;}
+    else{
+        return log(a);}}
+unsigned long long factorial(int a){
+    if(a==0){
+        return 1;}
+    else{
+        return a*factorial(a-1);}}
+double percentage(double a){
+    return a/100;}       
+        
+int main(){
+
+    char operator[4];
+    double num1, num2;
+
+    printf("~~~~~~CALCULATOR~~~~~\n");
+    printf("How to: Enter the first number\n"
+           "Enter then an operator (+,-,×,÷,√,^,pi,lg,!)\n"
+           "Then enter the second number\n"
+           "Enter a second number if you use an exponent\n"
+           "Enter = to find total\n"
+           "Enter C to clear operations\n"
+           "Enter E to exit operations\n");
+    while(true){
+    scanf("%lf",&num1);
+
+        while(true){
+    
+    scanf("%3s",operator);
+    
+    if (strcmp(operator,  "c")==0||
+        strcmp(operator,  "C")==0){  //add as a clear function 
+        printf("enter the first number\n");
+        break;}
+    else if(strcmp(operator,"=")==0){ 
+        printf("\nYour current result\n%.2lf"
+               "\nNew Operation\n",num1);   
+        break;}
+    else if(strcmp(operator,"e")==0||
+            strcmp(operator,"E")==0){ 
+        printf("\nNow Exiting"
+               "\nGoodbye\n"); 
+        return 0;}   
+        
+    if(strcmp(operator,"√")==0||
+       strcmp(operator,"sqrt")==0){
+        if(num1<0){
+            printf("Invalid Option\n");
+            return 0;}
+        else{    
+        num1=squareroot(num1);
+        continue;}}
+    else if(strcmp(operator,"^")==0){
+            scanf("%lf",&num2);
+        num1=exponent(num1,num2);
+        continue;}  
+    else if(strcmp(operator,"pi")==0||
+            strcmp(operator,"π")==0){
+        num1=pi(num1);
+        continue;} 
+    else if(strcmp(operator,"lg")==0||
+            strcmp(operator,"log")==0){
+        if(num1<0){  
+            printf("logs undefined for 0 and negative numbers");}
+        else{
+        num1=logarithmim(num1);
+        continue;}}
+    else if(strcmp(operator,"!")==0){
+        if(num1<0){  
+            printf("Factorial undefined for negative numbers");}
+        else{num1=factorial(num1);
+        continue;}}
+    else if(strcmp(operator,"%")==0){
+        num1=percentage(num1);
+        continue;}
+    else if(strcmp(operator, "+")==0||
+            strcmp(operator, "-")==0||
+            strcmp(operator, "×")==0||
+            strcmp(operator, "*")==0||
+            strcmp(operator, "/")==0||
+            strcmp(operator, "÷")==0){
+        scanf("%lf",&num2);} //vip line of code ngl
+    else{
+        printf("Invalid Option\n"
+               "\nNew Operation\n");
+        break;}
+      
+    if(strcmp(operator,"+")==0){
+        num1=add(num1,num2);}
+    else if(strcmp(operator,"-")==0){
+        num1=minus(num1,num2);}
+    else if(strcmp(operator,"×")==0 ||
+            strcmp(operator,"*")==0){
+        num1=multiply(num1,num2);}
+    else if(strcmp(operator,"÷")==0 ||
+            strcmp(operator,"/")==0){
+        if(num2==0){
+            printf("Cannot Divide by Zero"
+                   "\nNew Operation\n");
+            continue;}
+        else{    
+        num1=divide(num1,num2);}}
+    else {
+        printf("Invalid Option"
+               "\nNew Operation\n");}
+        break;    
+        }
+    }
+    return 0;
+ }
