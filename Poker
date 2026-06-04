@@ -1,0 +1,689 @@
+#include<stdio.h>
+#include<stdlib.h>
+#include<stdbool.h>
+#include<time.h>
+#include<string.h>
+#include<math.h>
+
+#define BIGBLIND 10
+#define SMALLBLIND 5
+
+typedef struct {
+    bool kicker;
+    bool pair;
+    bool twopair;
+    bool trips;
+    bool straight;
+    bool flush;
+    bool fullhouse;
+    bool quads;
+    bool straightflush;
+    bool royalstraight;
+} S_Bestrank;
+
+typedef struct {
+    char highcard[3];
+    int suited;
+    // int strength;
+} S_Boardinfo;
+
+typedef struct {
+    bool active;
+    bool folded;
+    bool betting;
+    bool out;
+    bool allin;
+} S_playerstate;
+
+typedef struct {
+    char hand[2][3];
+    char que[4];
+    int ranking;
+    S_Bestrank rank;
+    S_Boardinfo info;
+    S_playerstate state;
+    bool token;
+    int chips;
+    int lives;
+    int player_number;
+    int bets;
+} S_player;
+
+typedef struct {
+    bool preflop;
+    bool flop;
+    bool turn;
+    bool river;
+} S_boardstate;
+
+typedef struct {
+    int pot;
+    int call;
+} S_bet;
+
+S_bet bet;
+S_Bestrank rank;
+S_Boardinfo info;
+S_playerstate state;
+S_player players[4];
+S_boardstate board;
+int top=(-1),magicno=0;
+char deck[52][3], pool[7][3];
+
+void ClearTerminal();
+int Val_Auth(int min,int max);
+int Holder();
+int PlayerMove();
+void Deck();
+char Pop();
+void MakePlayers();
+int PlayersActive();
+void Que();
+void QueIncrement();
+int CardStrength(char a);
+int GameEnd(int a);
+void GameOverCheck();
+void PreBets();
+void RoundStart();
+void RoundEnd();
+void ShareChips();
+void DealHands();
+void BetLogic();
+void Bets(int a,int b,int c);
+bool EqualBets();
+void PoolEvaluation();
+int Ranking(int i);
+void Exceptions(int a);
+
+int main() {
+    srand(time(NULL));
+    Deck();//works
+    MakePlayers();//works
+    Que();//works
+    while(1) {
+        if(magicno==1) QueIncrement();
+        DealHands();//works
+        PreBets();//works
+
+        printf("\nYou are:%s",players[0].que);
+        printf("\nYour hand: %s %s",players[0].hand[0],players[0].hand[1]);
+        printf("\nplayer highcard %s\nPre-flop",players[0].info.highcard);
+
+        RoundStart();//works
+        if(magicno==1) break;
+        PoolEvaluation();
+        for(int i=0; i<4; i++) {
+            printf("\nplayer %d best hand no. %d",players[i].player_number,players[i].ranking);
+        }
+
+        printf("\nFlop\n");
+        for(int i=0; i<3; i++) {
+            strlcpy(pool[i+2],deck[Pop()],sizeof(pool[i+2]));
+            printf("%s,",pool[i]);
+        }
+
+        RoundStart();
+        if(magicno==1) break;
+        PoolEvaluation();
+        for(int i=0; i<4; i++) {
+            printf("\nplayer %d best hand no. %d",players[i].player_number,players[i].ranking);
+        }
+        printf("\nTurn\n");
+        strlcpy(pool[5],deck[Pop()],sizeof(pool[5]));
+        for(int i=0; i<4; i++) {
+            printf("%s,",pool[i]);
+        }
+
+        RoundStart();
+        if(magicno==1) break;
+        PoolEvaluation();
+        for(int i=0; i<4; i++) {
+            printf("\nplayer %d best hand no. %d",players[i].player_number,players[i].ranking);
+        }
+        printf("\nRiver\n");
+        strlcpy(pool[6],deck[Pop()],sizeof(pool[6]));
+        for(int i=0; i<5; i++) {
+            printf("%s",pool[i]);
+        }
+
+        RoundStart();
+        if(magicno==1) break;
+        PoolEvaluation();
+        for(int i=0; i<4; i++) {
+            printf("\nplayer %d best hand no. %d",players[i].player_number,players[i].ranking);
+        }
+        RoundEnd();//doesnt exist yet
+
+        if(top<13) {
+            Deck();
+        }
+        ShareChips();
+    }
+    return 0;
+}
+
+//GENERAL FUNCTION TOOLLS
+void ClearTerminal() {
+    system("@cls||clear");
+}
+
+int Val_Auth(int min,int max) {
+    int input;
+    while(1) {
+        if(scanf("%d", &input)!=1|| input < min || input > max) {
+            printf("Invalid Option");
+            while(getchar()!='\n');
+            continue;
+        }
+        break;
+    }
+    while(getchar()!='\n');
+    return input;
+}
+
+int Holder() {
+}
+//INITIALIZATION
+char Pop() {
+    return top--;
+}
+
+void Deck() {
+    char cardname[13]= {'A','2','3','4','5','6','7','8','9','T','J','Q','K'};
+    char suite[4]= {'H','D','C','S'};
+    top= -1;
+    for(int i=0; i<4; i++) {
+        for(int j=0; j<13; j++) {
+            char card[3];
+            card[0]=cardname[j];
+            card[1]=suite[i];
+            card[2]='\0';
+            top++;
+            strlcpy(deck[top],card,sizeof(deck[top]));
+        }
+    }
+    for (int i = 51; i > 0; i--) {
+        int j = rand() % (i + 1);
+        char temp[3];
+        strlcpy(temp, deck[i],sizeof(temp));
+        strlcpy(deck[i], deck[j],sizeof(deck));
+        strlcpy(deck[j], temp,sizeof(deck));
+    }
+}
+
+void MakePlayers() {
+    for(int i = 0; i < 4; i++) {
+        players[i].chips=200;
+        players[i].lives=5;
+        players[i].token = false;
+        players[i].state.active = true;
+    }
+}
+
+void Que() {
+//Happens once on game start
+    int active=PlayersActive();
+    char playerque[4][4]= {"UTG","BTN","SB","BB"};
+    int que=rand()%active;
+    if(active!=4) {
+        printf("Failure at Initialization");
+        return;
+    }
+    for(int i=0; i<active; i++) {
+        strlcpy(players[i].que,playerque[(i+que)%active],sizeof(players[i].que));
+    }
+    for(int i=0; i<active; i++) {
+        for(int j=0; j<4; j++) {
+            if(strcmp(players[i].que,playerque[j])!=0) continue;
+            players[i].player_number=j;
+        }
+    }
+}
+
+//CRITICAL LOGIC
+int PlayersActive() {
+    int active=4;
+    for(int i=0; i<4; i++) {
+        if(players[i].chips==0||players[i].lives==0) {
+            active--;
+            players[i].state.out = true;
+            players[i].state.active = false;
+        }
+    }
+    if(active==1) {
+        GameOverCheck();
+    }
+    return active;
+}
+
+void PoolEvaluation() {
+    int active=PlayersActive();
+    int cardstrength[2]= {0};
+    int poolint[7]= {0},empty[7]= {0},straight_count=0;
+    char pcopy[7][3]= {""},pcopytwo[7][3]= {""};
+
+    for (int k = 0; k < active; k++) {
+        int holder=0;
+        int freq[13] = {0};
+        int freqtwo[13] = {0};
+        int suit_count[4] = {0};
+
+        strlcpy(pool[0], players[k].hand[0],sizeof(pool[0]));
+        strlcpy(pool[1], players[k].hand[1],sizeof(pool[1]));
+        for(int i=0; i<7; i++) {//creating a copy of pool
+            strlcpy(pcopy[i],pool[i],sizeof(pcopy[i]));
+        }
+        players[k].rank.kicker=1;//checks highcard
+        int  hcard1=CardStrength(players[k].hand[0][0]);
+        int  hcard2=CardStrength(players[k].hand[1][0]);
+        if(hcard1>hcard2) {
+            strlcpy(players[k].hand[0],players[k].info.highcard,sizeof(players[k].hand[0]));
+        }
+        if(hcard2>hcard1) {
+            strlcpy(players[k].hand[1],players[k].info.highcard,sizeof(players[k].hand[0]));
+        }
+
+        for(int i=0; i<7; i++) {//checking pair trips && quads
+            if(pcopy[i][0]!='\0') {
+                freq[cardstrength[i]]++;
+                pcopy[i][0]='\0';
+            }
+        }
+        for (int i = 0; i < 13; i++) {//checks pair trips twopair fullhouse and quad
+            if (freq[i] == 2) players[k].rank.pair=1;
+            if (freq[i] == 3) players[k].rank.trips=1;
+            if (freq[i] == 4) players[k].rank.quads=1;
+        }
+        if(players[k].rank.pair==1||players[k].rank.trips==1) {
+            for(int i=0; i<7; i++) {
+                if(pcopy[i][0]!='\0') {
+                    freqtwo[cardstrength[i]]++;
+                    pcopy[i][0]='\0';
+                }
+            }
+            for (int i = 0; i < 13; i++) {//checking two pair fullhouse
+                if (freqtwo[i] == 2) players[k].rank.twopair=1;
+            }
+            if(players[k].rank.trips==1&&players[k].rank.pair==1) {
+                players[k].rank.fullhouse=1;
+            }
+        }
+        for(int i=0; i<7; i++) {
+            poolint[i]=CardStrength(pool[i][1]);
+        }
+        for(int s=14; s!=1; s--) {
+            for(int i=0; i<7; i++) {
+                if(poolint[i]!=s) continue;
+                for(int j=0; j<7; j++) {
+                    if(empty[j]!=0) continue;
+                    empty[j]=poolint[i];
+                }
+            }
+        }
+
+        for(int i=0; i<7; i++) {//checking straight
+            if(empty[i]-empty[i+1]!=1&&straight_count!=5) {
+                straight_count=0;
+                empty[i]=0;
+            }
+            straight_count++;
+            if(straight_count>5) {
+                empty[i+1]=0;
+            }
+        }
+        if(straight_count>=5) {
+            players[k].rank.straight=1;
+        }
+
+        for (int i = 0; i < 7; i++) {//checking flush
+            char s = pool[i][1];
+
+            if (s == 'h') suit_count[0]++;
+            else if (s == 'd') suit_count[1]++;
+            else if (s == 'c') suit_count[2]++;
+            else if (s == 's') suit_count[3]++;
+        }
+        for (int i = 0; i < 4; i++) {
+            if (suit_count[i] <= 5) continue;
+            players[k].rank.flush=true;
+        }
+        if(players[k].rank.flush==1&&players[k].rank.straight==1) {
+            players[k].rank.straightflush=1;
+        }
+        if(players[k].rank.straightflush==1&&players[k].info.highcard[0]=='A') {
+            players[k].rank.royalstraight=1;
+        }
+        Ranking(k);
+    }
+}
+
+// GAME LOOP
+void QueIncrement() {
+//because active can be==4 it will rerandomize if put into que()
+    int active=PlayersActive();
+    char playerque[4][4]= {"UTG","BTN","SB","BB"};
+    for(int i=0; i<active; i++) {
+        if(players[i].state.active==0) {
+            players[i].player_number=0;
+        }
+        players[i].player_number++;
+        if(players[i].player_number>active) {
+            players[i].player_number=1;
+        }
+    }
+    for(int i=0; i<active; i++) {
+        for(int j=0; j<4; j++) {
+            if(players[i].state.active==0) continue;
+            if(players[i].player_number!=j+1) continue;
+            strlcpy(players[i].que,playerque[j],sizeof(players[i].que));
+        }
+    }
+}
+
+void DealHands() {
+    for(int i = 0; i <4; i++) {
+        if(players[i].state.active == false) continue;
+        strlcpy(players[i].hand[0],deck[Pop()],sizeof(players[i].hand[0]));
+        strlcpy(players[i].hand[1],deck[Pop()],sizeof(players[i].hand[1]));
+    }
+}
+
+void PreBets() {
+    int active=PlayersActive();
+    bet.call=20;
+    for(int i=0; i<active; i++) {
+        if(strcmp(players[i].que,"SB")==0) {
+            players[i].chips-=(players[i].chips<=SMALLBLIND) ? players[i].chips : SMALLBLIND;
+            bet.pot+=SMALLBLIND;
+        }
+        if(strcmp(players[i].que,"BB")==0) {
+            players[i].chips-=(players[i].chips<=BIGBLIND) ? players[i].chips : BIGBLIND;
+            bet.pot+=BIGBLIND;
+        }
+    }
+
+}
+void ShareChips() {
+    float comp;
+    int loosechips=0;
+    int active=PlayersActive();
+    for(int i=0; i<4; i++) {
+        if(players[i].lives==0&&players[i].chips!=0) {
+            loosechips+=players[i].chips;
+        }
+    }
+    loosechips+=bet.pot;
+    comp = floor((float)loosechips / active);
+    for(int i=0; i<active; i++) {
+        if(players[i].chips > 0 && players[i].lives > 0) {
+            players[i].chips+=(int)comp;
+        }
+    }
+}
+
+void GameOverCheck() {
+    int active=PlayersActive();
+    if(players[0].chips==0||players[0].lives==0)
+        GameEnd(0);
+    if(active == 1) {
+        GameEnd(1);
+    }
+}
+
+int GameEnd(int a) {
+    if(a==0) {
+        printf("Game over you lose");
+    }
+    if(a==1) {
+        printf("Game over you win");
+    }
+    printf("Restart 1:Yes 2:No\n:");
+    int b=Val_Auth(1,2);
+    if(b==1) {
+//prolly make a loop in main
+    }
+    if(b==2) {
+        return 0;
+    }
+}
+
+void RoundStart() {
+    int active=PlayersActive(),a=0;//prolly its own functiin
+    for (int i = 0; i < active; i++) {
+        if (players[i].state.folded==1||players[i].state.out==1) continue;
+        a++;
+    }
+    if(a==1) {//when only 1 player left gives chips to player
+        for(int i=0; i<4; i++) {
+            players[i].chips+=(players[i].state.folded==0)? bet.pot: 0;
+            printf("Winner is Player %d\n", players[i].player_number);
+        }
+    }
+    do {
+        for(int j=0; j<4; j++) {
+            for(int i=0; i<4; i++) {
+                if(i==0) {
+                    if(players[0].player_number==j) PlayerMove();
+                }
+                if(players[i].player_number==j) BetLogic(i);
+            }
+        }
+    } while(EqualBets()!=1);
+}
+
+bool EqualBets() {
+    int active=PlayersActive();
+    for(int i=0; i<active; i++) {
+        if(players[i].state.allin==1) continue;
+        if(players[i].bets<bet.call) return false;
+    }
+    return true;
+}
+
+void RoundEnd() {
+    int winninghand=0,winner=0;
+    int active = PlayersActive();
+    magicno=1;
+    for (int i = 0; i < active; i++) {
+        if (players[i].state.folded==1) continue;
+        if(players[i].ranking>winninghand) {
+            players[i].ranking=winninghand;
+            players[i].player_number=winner;
+        }
+    }
+}
+
+//PLAYER INPUT
+int PlayerMove() {
+    int options=0,betamount=0,confirm=0;
+    int min=bet.call-players[0].bets;
+    printf("1:Call/Bet 2:All In 3:Fold\n");
+    options=Val_Auth(1,3);
+    if(options==1) {
+        printf("1:call 2:bet");
+        options=Val_Auth(1,2);
+        if(options==1) Bets(min,0,0);
+        printf("Place bet:");
+        betamount= Val_Auth(min,players[0].chips);
+        if(betamount<min) {
+            printf("Bet amount is too low.\nMinimum bet %d",min);
+            PlayerMove();
+        }
+        printf("You bet %d chips\n1:Yes 2:No\n",betamount);
+        confirm=Val_Auth(1,2);
+        if(confirm==1) Bets(betamount,0,0);
+        if(confirm==2) PlayerMove();
+    }
+    if(options==2) {
+        printf("Go All In\n1:Yes 2:No\n");
+        confirm=Val_Auth(1,2);
+        if(confirm==1) Bets(0,1,0);
+        if(confirm==2) PlayerMove();
+        /* printf("use token\n1:Yes 2:No 3: Back\n");
+         confirm=Val_Auth(1,3);
+         if(confirm==1) {
+             players[0].token=true;
+         }*/
+
+    }
+    if(options==3) {
+        printf("Fold?\n1:Yes 2:No\n");
+        confirm=Val_Auth(1,2);
+        players[0].state.folded=(confirm==1) ? 1 : PlayerMove();
+    }
+}
+
+//AI LOGIC
+void BetLogic(int a) {
+    if(players[a].state.folded == 1 ||
+            players[a].state.out == 1 ||
+            players[a].state.active != 1 ||
+            players[a].state.allin == 1) return;
+
+    int highcardb;
+    if(board.river!=1) Exceptions(a);
+    highcardb=CardStrength(players[a].info.highcard[0]);
+    if(board.preflop==1) {
+        if(players[a].ranking==1 && bet.call>20) players[a].state.folded=1;
+    }
+    if ((players[a].ranking >= 1 && players[a].ranking <= 4) && bet.call==200 && board.river !=1) {//add a feature for a flag of a all in player
+        players[a].state.folded=1;
+    }//exceptions for folded state
+    if (players[a].ranking >= 1 && players[a].ranking <= 10) { //update this is statement
+        Bets(players[a].bets-bet.call,0,a);
+    }//call condition
+    if (players[a].ranking >= 8 && players[a].ranking <= 10 && board.river==1) Bets(0,1,a);
+            Bets((players[a].ranking*3)+highcardb,0,a);//prevent continous betting
+}
+
+void Exceptions(int a) {
+    int poolint[7]= {0},empty[7]= {0};
+    int size=7,arrmover=0,rp[7]= {0},temp_count=0,lowest=5,count=0;
+    for(int i=0; i<7; i++) {//converts pool into an int
+        poolint[i]=CardStrength(pool[i][1]);
+    }
+    for(int s=14; s!=1; s--) {
+        for(int i=0; i<7; i++) {
+            if(poolint[i]!=s) continue;
+            for(int j=0; j<7; j++) {
+                if(empty[j]!=0) continue;
+                empty[j]=poolint[i];
+            }
+        }
+    }
+    for (int i = 0; i < size; i++) {//checks potential range
+        if(empty[i]-empty[i+1]==1) {//checking straight count
+            count++;
+            continue;
+        }
+        size=size+1;
+        arrmover=size-i;
+        for (int j=size; j!=arrmover; j--) {
+            empty[j]=empty[j-1];
+            rp[i]++;
+        }
+        empty[i]=empty[i]-1;
+        temp_count=rp[i]+count;
+        if(temp_count==5) {
+            i++;
+            temp_count=0;
+        }
+    }
+    for(int i=0; i<7; i++) {
+        if(rp[i]<lowest) {
+            lowest=rp[i];
+        }
+    }
+    int suit_count[4] = {0};
+    for (int i = 0; i < 7; i++) {//checking flush
+        char s = pool[i][1];
+        if (s == 'h') suit_count[0]++;
+        else if (s == 'd') suit_count[1]++;
+        else if (s == 'c') suit_count[2]++;
+        else if (s == 's') suit_count[3]++;
+    }
+    if((players[a].ranking==1||players[a].ranking==2)&&lowest<2) {
+        players[a].rank.straight=true;
+    }
+    for (int i = 0; i < 4; i++) {
+        if (suit_count[i] <= 4) continue;
+        players[a].rank.flush=true;
+    }
+}
+
+//LISTS
+int Ranking(int i) {
+    if(players[i].rank.kicker==1)
+        return players[i].ranking=1;
+    if(players[i].rank.pair==1)
+        return players[i].ranking=2;
+    if(players[i].rank.twopair==1)
+        return players[i].ranking=3;
+    if(players[i].rank.trips==1)
+        return players[i].ranking=4;
+    if(players[i].rank.straight==1)
+        return players[i].ranking=5;
+    if(players[i].rank.flush==1)
+        return players[i].ranking=6;
+    if(players[i].rank.fullhouse==1)
+        return players[i].ranking=7;
+    if(players[i].rank.quads==1)
+        return players[i].ranking=8;
+    if(players[i].rank.straightflush==1)
+        return players[i].ranking=9;
+    if(players[i].rank.royalstraight==1)
+        return players[i].ranking=10;
+}
+
+int CardStrength(char c) {
+    switch (c) {
+    case '2':
+        return 2;
+    case '3':
+        return 3;
+    case '4':
+        return 4;
+    case '5':
+        return 5;
+    case '6':
+        return 6;
+    case '7':
+        return 7;
+    case '8':
+        return 8;
+    case '9':
+        return 9;
+    case 'T':
+        return 10;
+    case 'J':
+        return 11;
+    case 'Q':
+        return 12;
+    case 'K':
+        return 13;
+    case 'A':
+        return 14;
+    default:
+        printf("Critical Error occured");
+        return 0;
+    }
+}
+
+void Bets(int a,int b, int c) {
+
+    if (b==1) {
+        players[c].state.allin=1;
+        bet.pot+=players[c].chips;
+        players[c].chips=0;
+    }
+    if((a+players[c].bets<bet.call)&&b==0) {
+        printf("bet amount:%d",bet.call-players[c].bets);
+        return;
+    }
+    if(a+players[c].bets>bet.call) { //basic raise condtion
+        bet.call=a+players[c].bets;
+    }
+    bet.pot+=a;
+    players[c].bets+=a;
+    players[c].chips-=a;
+}
